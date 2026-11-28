@@ -673,7 +673,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
             <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>제품별 상세 실적 (ABC 파레토 등급)</span>
+              <span>제품별 상세 실적</span>
               <span id="productTableCountBadge" class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">0개</span>
             </h3>
             <p class="text-xs text-slate-500">전체 순매출 누적 비중 기준 A등급(핵심 70%) · B등급(우수 20%) · C등급(일반 10%) 자동 분류 및 A등급 반품률 10% 초과 주의 표시</p>
@@ -703,6 +703,7 @@
             </div>
             <select id="productSortSelect" class="h-9 px-2.5 text-xs border border-slate-300 rounded-lg bg-white">
               <option value="netSales">순매출순</option>
+              <option value="sharePct">매출비중순</option>
               <option value="normQty">정상수량순</option>
               <option value="returnQty">반품수량순</option>
               <option value="grossSales">총출고매출순</option>
@@ -726,6 +727,7 @@
           <table class="w-full text-xs text-left border-collapse">
             <thead class="bg-slate-50 text-slate-600 border-y border-slate-200">
               <tr>
+                <th class="py-3 px-2.5 font-semibold text-center w-12">순번</th>
                 <th data-sort-table="products" data-sort-key="abcGrade" data-sort-type="string" class="py-3 px-2.5 font-semibold text-center w-24 cursor-pointer select-none hover:bg-slate-100 transition-colors">ABC등급<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
                 <th data-sort-table="products" data-sort-key="code" data-sort-type="string" class="py-3 px-3 font-semibold cursor-pointer select-none hover:bg-slate-100 transition-colors">품목코드<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
                 <th data-sort-table="products" data-sort-key="name" data-sort-type="string" class="py-3 px-3 font-semibold cursor-pointer select-none hover:bg-slate-100 transition-colors">품명 (클릭 시 상세 분석)<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
@@ -738,7 +740,8 @@
                 <th data-sort-table="products" data-sort-key="prevNetSales" data-sort-type="number" class="yoy-col hidden py-3 px-2.5 font-semibold text-right cursor-pointer select-none hover:bg-slate-100 transition-colors">전년 순매출<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
                 <th data-sort-table="products" data-sort-key="yoyDiff" data-sort-type="number" class="yoy-col hidden py-3 px-2.5 font-semibold text-right cursor-pointer select-none hover:bg-slate-100 transition-colors">전년대비(YoY)<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
                 <th data-sort-table="products" data-sort-key="retQtyRate" data-sort-type="number" class="py-3 px-2.5 font-semibold text-right cursor-pointer select-none hover:bg-slate-100 transition-colors">수량반품률<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
-                <th data-sort-table="products" data-sort-key="retAmtRate" data-sort-type="number" class="py-3 px-3 font-semibold text-right cursor-pointer select-none hover:bg-slate-100 transition-colors">금액반품률<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
+                <th data-sort-table="products" data-sort-key="retAmtRate" data-sort-type="number" class="py-3 px-2.5 font-semibold text-right cursor-pointer select-none hover:bg-slate-100 transition-colors">금액반품률<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
+                <th data-sort-table="products" data-sort-key="sharePct" data-sort-type="number" class="py-3 px-3 font-semibold text-right cursor-pointer select-none hover:bg-slate-100 transition-colors">매출비중<span class="sort-arrow ml-1 text-slate-300">⇅</span></th>
               </tr>
             </thead>
             <tbody id="productsTableBody" class="divide-y divide-slate-100 tabular-nums"></tbody>
@@ -1823,16 +1826,17 @@
       const activeYms = [...new Set(periodOnly.map(r => r.ym))].sort();
       const activeMMSet = new Set(periodOnly.map(r => r.mm));
 
-      let prev = [], prevYear = null, isYoyActive = false;
+      let prev = [], periodPrevCarry = [], prevYear = null, isYoyActive = false;
       if (STATE.compareYoy && STATE.selectedYear !== 'ALL') {
         prevYear = String(Number(STATE.selectedYear) - 1);
         const prevAll = STATE.allRows.filter(r => r.year === prevYear);
         if (prevAll.length > 0) {
           isYoyActive = true;
-          prev = applyCarryoverFilter(applyGlobalClientFilter(prevAll.filter(r => activeMMSet.has(r.mm))));
+          periodPrevCarry = applyCarryoverFilter(prevAll.filter(r => activeMMSet.has(r.mm)));
+          prev = applyGlobalClientFilter(periodPrevCarry);
         }
       }
-      return { curr, prev, rawPeriodCurr, periodOnly, periodCarryOnly, activeYms, activeMMList: [...activeMMSet].sort(), prevYear, isYoyActive };
+      return { curr, prev, rawPeriodCurr, periodOnly, periodCarryOnly, periodPrevCarry, activeYms, activeMMList: [...activeMMSet].sort(), prevYear, isYoyActive };
     }
 
     function calcMetrics(rows) {
@@ -1931,6 +1935,7 @@
 
     function aggregateByProduct(currRows, prevRows, isYoyActive = false, globalAbcMap = null) {
       const abcMap = globalAbcMap || computeProductAbcMap(currRows);
+      const totalNet = calcMetrics(currRows).netSales;
       const map = new Map();
       for (const r of currRows) {
         if (!map.has(r.code)) map.set(r.code, { code: r.code, name: r.name, group: r.group, currRows: [], prevRows: [] });
@@ -1945,6 +1950,7 @@
           code: it.code, name: it.name, group: it.group, ...m,
           abcGrade: abcInfo.grade, cumSharePct: abcInfo.cumSharePct, isHighReturnWarn,
           prevNetSales: pm.netSales, yoyDiff: m.netSales - pm.netSales,
+          sharePct: totalNet > 0 ? (m.netSales / totalNet) * 100 : 0,
           isNew: isYoyActive && pm.grossSales === 0 && pm.returnAmt === 0 && (m.grossSales > 0 || m.returnAmt > 0)
         };
       }).sort((a, b) => b.netSales - a.netSales);
@@ -3125,9 +3131,10 @@
       updateSortHeaderIndicators('products', STATE.productSort);
       document.getElementById('productTableCountBadge').textContent = `${fmtNum(prods.length)}개`;
       document.getElementById('productsTableBody').innerHTML = !prods.length
-        ? `<tr><td colspan="${isYoyActive ? 13 : 11}" class="py-10 text-center text-slate-400">조건에 해당하는 제품 데이터가 없습니다.</td></tr>`
-        : prods.map(p => `
+        ? `<tr><td colspan="${isYoyActive ? 15 : 13}" class="py-10 text-center text-slate-400">조건에 해당하는 제품 데이터가 없습니다.</td></tr>`
+        : prods.map((p, idx) => `
             <tr class="hover:bg-blue-50/50 transition-colors">
+              <td class="py-2.5 px-2.5 text-center font-semibold text-slate-500">${idx + 1}</td>
               <td class="py-2.5 px-2.5 text-center">${renderAbcBadgeHtml(p.abcGrade, p.isHighReturnWarn)}</td>
               <td class="py-2.5 px-3 font-mono text-slate-500">${escapeHtml(p.code)}</td>
               <td class="py-2.5 px-3"><button type="button" data-code="${escapeHtml(p.code)}" class="open-product-modal text-left font-bold text-blue-700 hover:underline">${escapeHtml(p.name)}</button>${p.isNew ? '<span class="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-800">NEW</span>' : ''}</td>
@@ -3140,7 +3147,8 @@
               <td class="yoy-col ${isYoyActive ? '' : 'hidden'} py-2.5 px-2.5 text-right text-slate-500">${fmtNum(p.prevNetSales)}</td>
               <td class="yoy-col ${isYoyActive ? '' : 'hidden'} py-2.5 px-2.5 text-right">${renderYoyBadgeHtml(p.netSales, p.prevNetSales, isYoyActive)}</td>
               <td class="py-2.5 px-2.5 text-right">${p.retQtyRate.toFixed(2)}%</td>
-              <td class="py-2.5 px-3 text-right ${p.retAmtRate >= HIGH_RETURN_THRESHOLD || p.isHighReturnWarn ? 'text-rose-600 font-bold' : ''}">${p.retAmtRate.toFixed(2)}%</td>
+              <td class="py-2.5 px-2.5 text-right ${p.retAmtRate >= HIGH_RETURN_THRESHOLD || p.isHighReturnWarn ? 'text-rose-600 font-bold' : ''}">${p.retAmtRate.toFixed(2)}%</td>
+              <td class="py-2.5 px-3 text-right font-medium text-blue-700">${p.sharePct.toFixed(1)}%</td>
             </tr>`).join('');
     }
 
@@ -3626,26 +3634,24 @@
     }
 
     function updatePptClientRawAccounts(u, presetRaw = 'ALL') {
-      const { periodCarryOnly, prevYear, isYoyActive } = getFilteredDatasets();
-      const yearRows = STATE.selectedYear === 'ALL' ? STATE.allRows : STATE.allRows.filter(r => r.year === STATE.selectedYear);
-      const periodOnly = STATE.selectedMonths.length > 0 ? yearRows.filter(r => STATE.selectedMonths.includes(r.mm)) : yearRows;
-      const activeMMSet = new Set(periodOnly.map(r => r.mm));
-      const periodPrevCarry = isYoyActive && prevYear
-        ? applyCarryoverFilter(STATE.allRows.filter(r => r.year === prevYear && activeMMSet.has(r.mm)))
-        : [];
-
+      const { periodCarryOnly, periodPrevCarry } = getFilteredDatasets();
       const rSel = document.getElementById('pptScopeRawAccountSelect');
-      if (u === '__FILTERED__') {
-        rSel.classList.add('hidden');
+      if (!u || u === '__FILTERED__') {
+        rSel.innerHTML = `<option value="ALL">전체 통합</option>`;
         rSel.value = 'ALL';
+        rSel.classList.add('hidden');
         return;
       }
       const raws = [...new Set([...periodCarryOnly.filter(r => resolveUnifiedClient(r.rawClient) === u).map(r => r.rawClient), ...periodPrevCarry.filter(r => resolveUnifiedClient(r.rawClient) === u).map(r => r.rawClient)])].sort();
       if (raws.length > 1) {
         rSel.classList.remove('hidden');
         rSel.innerHTML = `<option value="ALL">전체 통합 (${raws.length}개 계정)</option>` + raws.map(r => `<option value="${escapeHtml(r)}">개별 계정: ${escapeHtml(r)}</option>`).join('');
-        rSel.value = presetRaw;
-      } else { rSel.classList.add('hidden'); rSel.value = 'ALL'; }
+        rSel.value = [...rSel.options].some(o => o.value === presetRaw) ? presetRaw : 'ALL';
+      } else {
+        rSel.innerHTML = `<option value="ALL">전체 통합</option>`;
+        rSel.value = 'ALL';
+        rSel.classList.add('hidden');
+      }
     }
 
     async function renderHiDpiChartImage({ widthIn, heightIn, configBuilder }) {
@@ -3680,7 +3686,7 @@
       const btn = document.getElementById('btnGeneratePpt'), orig = btn.innerHTML;
       btn.disabled = true; btn.innerHTML = `<span>600 DPI 초고화질 PPT 생성 중...</span>`;
       try {
-        const { curr, prev, periodCarryOnly, activeYms, prevYear, isYoyActive } = getFilteredDatasets();
+        const { curr, prev, periodCarryOnly, periodPrevCarry, activeYms, prevYear, isYoyActive } = getFilteredDatasets();
         const scope = document.getElementById('pptScopeType').value;
         const target = document.getElementById('pptScopeTargetSelect').value;
         const rawVal = document.getElementById('pptScopeRawAccountSelect').value || 'ALL';
@@ -3972,6 +3978,10 @@
 
         await pptx.writeFile({ fileName: `${title.replace(/[\\/:*?"<>|]/g, '_')}_${periodLbl.replace(/,\s*/g, '_')}.pptx` });
         document.getElementById('pptReportModal').classList.add('hidden');
+        showToast('초고화질 PPT 보고서가 생성되었습니다.', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('PPT 생성 중 오류가 발생했습니다: ' + (err?.message || err), 'error');
       } finally { btn.disabled = false; btn.innerHTML = orig; lucide.createIcons(); }
     }
 
@@ -4209,20 +4219,23 @@
           { key: 'yoyDiff', header: '전년대비증감액', type: 'int', negativeRed: true, minW: 15 }
         ] : []),
         { key: 'retQtyRate', header: '수량반품률(%)', type: 'pct', minW: 13 },
-        { key: 'retAmtRate', header: '금액반품률(%)', type: 'pct', warnHighReturn: true, minW: 13 }
+        { key: 'retAmtRate', header: '금액반품률(%)', type: 'pct', warnHighReturn: true, minW: 13 },
+        { key: 'sharePct', header: '매출비중(%)', type: 'pct', minW: 12 }
       ];
       const rows = prods.map((p, i) => ({
         rank: i + 1, abcGrade: `${p.abcGrade || 'C'}등급`, code: p.code, name: p.name, group: p.group, isNew: p.isNew ? 'NEW' : '',
         normQty: p.normQty, returnQty: p.returnQty, netSales: Math.round(p.netSales), grossSales: Math.round(p.grossSales),
         returnAmt: Math.round(p.returnAmt), prevNetSales: Math.round(p.prevNetSales), yoyDiff: Math.round(p.yoyDiff),
-        retQtyRate: Number(p.retQtyRate.toFixed(2)), retAmtRate: Number(p.retAmtRate.toFixed(2))
+        retQtyRate: Number(p.retQtyRate.toFixed(2)), retAmtRate: Number(p.retAmtRate.toFixed(2)),
+        sharePct: Number((p.sharePct || 0).toFixed(2))
       }));
       const totalRow = {
         rank: '합계', abcGrade: '', code: '', name: `총 ${prods.length}개 품목`, group: '', isNew: '',
         normQty: totNormQty, returnQty: totRetQty, netSales: Math.round(totNet), grossSales: Math.round(totGross),
         returnAmt: Math.round(totRetAmt), prevNetSales: Math.round(totPrevNet), yoyDiff: Math.round(totNet - totPrevNet),
         retQtyRate: totNormQty > 0 ? Number(((totRetQty / totNormQty) * 100).toFixed(2)) : 0,
-        retAmtRate: totGross > 0 ? Number(((totRetAmt / totGross) * 100).toFixed(2)) : 0
+        retAmtRate: totGross > 0 ? Number(((totRetAmt / totGross) * 100).toFixed(2)) : 0,
+        sharePct: 100
       };
       return { cols, rows, totalRow };
     }
